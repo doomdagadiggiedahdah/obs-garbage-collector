@@ -28,7 +28,6 @@ def call_llm(prompt, temperature=0.3, stream=False):
 
 # Read the Obsidian Zettelkasten note
 note_path = "/home/mat/Obsidian/ZettleKasten/recurrence and state-spaces.md"
-append_path = "/home/mat/Obsidian/ZettleKasten/gpt-oss - append here.md"
 
 with open(note_path, 'r', encoding='utf-8') as file:
     note_content = file.read()
@@ -56,9 +55,6 @@ IMPORTANT: Return ONLY the CSV data (no headers, no additional text)."""
 # Get the segmentation response
 segmentation_csv = call_llm(segmentation_prompt)
 
-print(f"Reading note from: {note_path}\n")
-print("=" * 50)
-print(note_content)
 print("\n" + "=" * 50)
 print("SEGMENTATION CSV:")
 print("=" * 50)
@@ -111,9 +107,6 @@ segments = []
 try:
     csv_reader = csv.reader(io.StringIO(segmentation_csv))
     
-    print("PARSED SEGMENTS:")
-    print("=" * 50)
-    
     for row in csv_reader:
         if len(row) >= 4:  # Ensure we have all required columns
             segment_num = int(row[0]) if row[0].isdigit() else row[0]
@@ -128,15 +121,6 @@ try:
                 'description': description
             }
             segments.append(segment_info)
-            
-            print(f"Segment {segment_num}: {description}")
-            print(f"  Lines {line_start}-{line_end}")
-            
-            # Show the actual content for this segment
-            if isinstance(line_start, int) and isinstance(line_end, int):
-                segment_lines = lines[line_start-1:line_end]
-                print(f"  Content: {segment_lines[0][:60]}..." if segment_lines else "  Content: [empty]")
-            print()
         else:
             print(f"WARNING: Skipping malformed row: {row}")
             
@@ -156,7 +140,7 @@ if segments:
     if segments_to_extract:
         print(f"Segments recommended for extraction: {segments_to_extract}")
         
-        # Append the first segment to the append file
+        # Process the first segment for extraction
         first_segment_num = segments_to_extract[0]
         first_segment = next((s for s in segments if s['number'] == first_segment_num), None)
         
@@ -164,29 +148,7 @@ if segments:
             # Get the full content of the first segment
             first_segment_content = '\n'.join(lines[first_segment['line_start']-1:first_segment['line_end']])
             
-            # Create the append content with metadata
             from datetime import datetime
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
-            append_content = f"""
-
----
-## Extracted Segment - {timestamp}
-**Source:** {note_path}
-**Description:** {first_segment['description']}
-**Original Lines:** {first_segment['line_start']}-{first_segment['line_end']}
-
-{first_segment_content}
-"""
-            
-            # Append to the file
-            try:
-                with open(append_path, 'a', encoding='utf-8') as append_file:
-                    append_file.write(append_content)
-                print(f"\n✅ APPENDED first segment to: {append_path}")
-                print(f"   Segment {first_segment_num}: {first_segment['description']}")
-            except Exception as e:
-                print(f"\n❌ ERROR: Failed to append to {append_path}: {e}")
             
             # Generate a name for the extracted segment
             naming_prompt = f"""Generate a concise, descriptive filename for the following note content. The filename should:
@@ -250,17 +212,11 @@ tags:
             except Exception as e:
                 print(f"\n❌ ERROR: Failed to create new note {new_note_path}: {e}")
         
-        # Display all segments for review
-        for segment_num in segments_to_extract:
-            segment = next((s for s in segments if s['number'] == segment_num), None)
-            if segment:
-                print(f"\n📝 Extract Segment {segment_num}: {segment['description']}")
-                print(f"   Lines {segment['line_start']}-{segment['line_end']}")
-                
-                # Show the full content of this segment
-                if isinstance(segment['line_start'], int) and isinstance(segment['line_end'], int):
-                    segment_content = '\n'.join(lines[segment['line_start']-1:segment['line_end']])
-                    print(f"   Content preview: {segment_content[:200]}...")
+        # Display only the moved segment
+        if first_segment:
+            print(f"\n📝 MOVED Segment {first_segment_num}: {first_segment['description']}")
+            print(f"   Lines {first_segment['line_start']}-{first_segment['line_end']}")
+            print(f"   Created note: {note_name}.md")
     else:
         print("No segments recommended for extraction.")
 
