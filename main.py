@@ -140,83 +140,90 @@ if segments:
     if segments_to_extract:
         print(f"Segments recommended for extraction: {segments_to_extract}")
         
-        # Process the first segment for extraction
-        first_segment_num = segments_to_extract[0]
-        first_segment = next((s for s in segments if s['number'] == first_segment_num), None)
+        from datetime import datetime
+        import re
+        import os
         
-        if first_segment and isinstance(first_segment['line_start'], int) and isinstance(first_segment['line_end'], int):
-            # Get the full content of the first segment
-            first_segment_content = '\n'.join(lines[first_segment['line_start']-1:first_segment['line_end']])
+        # Process first 5 segments in reverse order (last to first)
+        segments_to_process = segments_to_extract[:5]
+        processed_segments = []
+        
+        for segment_num in reversed(segments_to_process):
+            segment = next((s for s in segments if s['number'] == segment_num), None)
             
-            from datetime import datetime
-            
-            # Generate a name for the extracted segment
-            naming_prompt = f"""Generate a concise, descriptive filename for the following note content. The filename should:
+            if segment and isinstance(segment['line_start'], int) and isinstance(segment['line_end'], int):
+                # Get the full content of the segment
+                segment_content = '\n'.join(lines[segment['line_start']-1:segment['line_end']])
+                
+                # Generate a name for the extracted segment
+                naming_prompt = f"""Generate a concise, descriptive filename for the following note content. The filename should:
 - Be suitable for an Obsidian note (no special characters except hyphens and spaces)
 - Capture the main concept or insight
 - Be between 3-8 words
 - Use lowercase with hyphens instead of spaces
 
 Content to name:
-{first_segment_content}
+{segment_content}
 
 Return ONLY the filename without .md extension (e.g., "state-space-representation" or "recursive-neural-networks")."""
-            
-            note_name = call_llm(naming_prompt, temperature=0.3)
-            
-            # Clean the note name to ensure it's filesystem-safe
-            import re
-            import os
-            note_name = re.sub(r'[^\w\s-]', '', note_name).strip()
-            note_name = re.sub(r'[-\s]+', '-', note_name).lower()
-            
-            # Check if file already exists and modify name if needed
-            base_name = note_name
-            counter = 1
-            new_note_path = f"/home/mat/Obsidian/ZettleKasten/{note_name}.md"
-            
-            while os.path.exists(new_note_path):
-                note_name = f"{base_name}-{counter}"
+                
+                note_name = call_llm(naming_prompt, temperature=0.3)
+                
+                # Clean the note name to ensure it's filesystem-safe
+                note_name = re.sub(r'[^\w\s-]', '', note_name).strip()
+                note_name = re.sub(r'[-\s]+', '-', note_name).lower()
+                
+                # Check if file already exists and modify name if needed
+                base_name = note_name
+                counter = 1
                 new_note_path = f"/home/mat/Obsidian/ZettleKasten/{note_name}.md"
-                counter += 1
-            
-            new_note_content = f"""---
+                
+                while os.path.exists(new_note_path):
+                    note_name = f"{base_name}-{counter}"
+                    new_note_path = f"/home/mat/Obsidian/ZettleKasten/{note_name}.md"
+                    counter += 1
+                
+                new_note_content = f"""---
 date_creation: {datetime.now().strftime("%Y-%m-%d")}
 time_creation: {datetime.now().strftime("%H:%M:%S")}
 tags:
 ---
 
-{first_segment_content}
+{segment_content}
 """
-            
-            try:
-                with open(new_note_path, 'w', encoding='utf-8') as new_file:
-                    new_file.write(new_note_content)
-                print(f"\n📄 CREATED new note: {new_note_path}")
-                print(f"   Note name: {note_name}")
                 
-                # Add link to generated note in original file after the extracted segment
-                link_text = f"- sent to [[{note_name}]]"
-                
-                # Insert the link after the last line of the extracted segment
-                insert_line = first_segment['line_end']
-                lines.insert(insert_line, link_text)
-                
-                # Write the updated content back to the original file
-                updated_content = '\n'.join(lines)
-                with open(note_path, 'w', encoding='utf-8') as original_file:
-                    original_file.write(updated_content)
-                
-                print(f"\n🔗 ADDED link in original file at line {insert_line + 1}: {link_text}")
-                
-            except Exception as e:
-                print(f"\n❌ ERROR: Failed to create new note {new_note_path}: {e}")
+                try:
+                    with open(new_note_path, 'w', encoding='utf-8') as new_file:
+                        new_file.write(new_note_content)
+                    
+                    # Add link to generated note in original file after the extracted segment
+                    link_text = f"- sent to [[{note_name}]]"
+                    
+                    # Insert the link after the last line of the extracted segment
+                    insert_line = segment['line_end']
+                    lines.insert(insert_line, link_text)
+                    
+                    processed_segments.append({
+                        'number': segment_num,
+                        'description': segment['description'],
+                        'lines': f"{segment['line_start']}-{segment['line_end']}",
+                        'note_name': note_name
+                    })
+                    
+                except Exception as e:
+                    print(f"\n❌ ERROR: Failed to create new note {new_note_path}: {e}")
         
-        # Display only the moved segment
-        if first_segment:
-            print(f"\n📝 MOVED Segment {first_segment_num}: {first_segment['description']}")
-            print(f"   Lines {first_segment['line_start']}-{first_segment['line_end']}")
-            print(f"   Created note: {note_name}.md")
+        # Write the updated content back to the original file
+        if processed_segments:
+            updated_content = '\n'.join(lines)
+            with open(note_path, 'w', encoding='utf-8') as original_file:
+                original_file.write(updated_content)
+        
+        # Display processed segments
+        for segment in processed_segments:
+            print(f"\n📝 MOVED Segment {segment['number']}: {segment['description']}")
+            print(f"   Lines {segment['lines']}")
+            print(f"   Created note: {segment['note_name']}.md")
     else:
         print("No segments recommended for extraction.")
 
